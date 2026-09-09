@@ -1,0 +1,13 @@
+{
+  "uid": "aiogram-overview", "title": "Aiogram bot", "schemaVersion": 39,
+  "version": 1, "refresh": "15s", "time": {"from": "now-1h", "to": "now"},
+  "panels": [
+    {"id": 1, "type": "stat", "title": "Service up", "gridPos": {"x": 0, "y": 0, "w": 8, "h": 6}, "datasource": {"uid": "prometheus", "type": "prometheus"}, "targets": [{"expr": "up{job=\"aiogram\"}", "refId": "A"}]},
+    {"id": 2, "type": "stat", "title": "Pending updates", "gridPos": {"x": 8, "y": 0, "w": 8, "h": 6}, "datasource": {"uid": "prometheus", "type": "prometheus"}, "targets": [{"expr": "bot_inbox_updates{status=\"pending\"}", "refId": "A"}]},
+    {"id": 3, "type": "stat", "title": "Failed updates", "gridPos": {"x": 16, "y": 0, "w": 8, "h": 6}, "datasource": {"uid": "prometheus", "type": "prometheus"}, "targets": [{"expr": "bot_inbox_updates{status=\"failed\"}", "refId": "A"}]},
+    {"id": 4, "type": "timeseries", "title": "Webhook updates / second", "gridPos": {"x": 0, "y": 6, "w": 12, "h": 8}, "datasource": {"uid": "prometheus", "type": "prometheus"}, "targets": [{"expr": "sum by(result) (rate(bot_webhook_updates_total[5m]))", "refId": "A", "legendFormat": "{{result}}"}]},
+    {"id": 5, "type": "timeseries", "title": "HTTP responses / second", "gridPos": {"x": 12, "y": 6, "w": 12, "h": 8}, "datasource": {"uid": "prometheus", "type": "prometheus"}, "targets": [{"expr": "sum by(status) (rate(bot_http_requests_total[5m]))", "refId": "A", "legendFormat": "{{status}}"}]},
+    {"id": 6, "type": "timeseries", "title": "HTTP p95 duration (seconds)", "gridPos": {"x": 0, "y": 14, "w": 12, "h": 8}, "datasource": {"uid": "prometheus", "type": "prometheus"}, "targets": [{"expr": "histogram_quantile(0.95, sum by(le, route) (rate(bot_http_duration_seconds_bucket[5m])))", "refId": "A", "legendFormat": "{{route}}"}]},
+    {"id": 7, "type": "timeseries", "title": "Oldest pending update (seconds)", "gridPos": {"x": 12, "y": 14, "w": 12, "h": 8}, "datasource": {"uid": "prometheus", "type": "prometheus"}, "targets": [{"expr": "bot_inbox_oldest_pending_seconds", "refId": "A"}]}
+  ]
+}

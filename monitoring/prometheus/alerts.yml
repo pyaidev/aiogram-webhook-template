@@ -1,0 +1,31 @@
+groups:
+  - name: aiogram
+    rules:
+      - alert: AiogramUnavailable
+        expr: up{job="aiogram"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Aiogram metrics endpoint is unavailable
+      - alert: AiogramInboxStalled
+        expr: bot_inbox_oldest_pending_seconds > 120
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Updates have waited more than two minutes; inspect worker and dependencies
+      - alert: AiogramDeadLetters
+        expr: bot_inbox_updates{status="failed"} > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Failed updates require review before explicit retry
+      - alert: AiogramHTTPFailures
+        expr: sum(rate(bot_http_requests_total{status=~"5.."}[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Aiogram webhook service is returning server errors

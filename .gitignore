@@ -158,6 +158,13 @@ dmypy.json
 .pytype/
 
 # Cython debug symbols
+.idea/
+.ruff_cache/
+backups/
+*.dump
+.DS_Store
+.env.*
+!.env.example
 cython_debug/
 
 # PyCharm

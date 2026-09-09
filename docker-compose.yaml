@@ -1,10 +1,163 @@
-version: "3.9"
+name: aiogram-boilerplate
+
+x-app: &app
+  build:
+    context: .
+    target: runtime
+  env_file: .env
+  init: true
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  security_opt:
+    - no-new-privileges:true
+  cap_drop: [ALL]
+  stop_grace_period: 45s
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
 
 services:
   app:
-    build: .
+    <<: *app
     ports:
-      - "8001:8001"
+      - "127.0.0.1:8003:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready/', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  migrate:
+    <<: *app
+    restart: "no"
+    command: [alembic, upgrade, head]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    <<: *app
+    profiles: [bot]
+    command: [python, -m, bot, worker]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bot}
+      POSTGRES_USER: ${POSTGRES_USER:-bot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run make init}
+    restart: unless-stopped
     volumes:
-      - ./:/app/
-    restart: always
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Run make init}
+    command: [sh, -c, 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD" --maxmemory 256mb --maxmemory-policy noeviction']
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  prometheus:
+    profiles: [monitoring]
+    build: monitoring/prometheus
+    environment:
+      METRICS_TOKEN: ${METRICS_TOKEN:?Run make init}
+    ports:
+      - "127.0.0.1:9092:9090"
+    restart: unless-stopped
+    volumes:
+      - prometheus_data:/prometheus
+    depends_on:
+      app:
+        condition: service_healthy
+
+  grafana:
+    profiles: [monitoring]
+    build: monitoring/grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Run make init}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    ports:
+      - "127.0.0.1:3002:3000"
+    restart: unless-stopped
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on: [prometheus]
+
+  test-db:
+    profiles: [test]
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: bot_test
+      POSTGRES_PASSWORD: bot_test
+      POSTGRES_DB: bot_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: [CMD, pg_isready, -U, bot_test, -d, bot_test]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  test-redis:
+    profiles: [test]
+    image: redis:7.4-alpine
+    command: [redis-server, --save, "", --appendonly, "no"]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  tests:
+    profiles: [test]
+    build:
+      context: .
+      target: test
+    environment:
+      ENVIRONMENT: test
+      DATABASE_URL: postgresql+asyncpg://bot_test:bot_test@test-db:5432/bot_test
+      TEST_DATABASE_URL: postgresql+asyncpg://bot_test:bot_test@test-db:5432/bot_test
+      TEST_REDIS_URL: redis://test-redis:6379/0
+    command: [sh, -c, "alembic upgrade head && alembic downgrade base && alembic upgrade head && alembic check && pytest -q"]
+    depends_on:
+      test-db:
+        condition: service_healthy
+      test-redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
